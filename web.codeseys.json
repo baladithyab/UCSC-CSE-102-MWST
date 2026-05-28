@@ -9,14 +9,17 @@
     "year": 2021
   },
   "title": "CSE 102 — Minimum Weight Spanning Tree (UCSC, Fall 2021)",
-  "description": "The programming-project assignment for CSE 102 (Algorithm Analysis & Design): given a weighted undirected graph, compute its minimum weight spanning tree using Prim's algorithm with a priority-queue. The C++ implementation from the original assignment runs unchanged — graph.cpp + graph.h, ~250 lines — compiled to WebAssembly via Emscripten. The JavaScript layer takes input in the same line-format the CLI used, calls into wasm, and renders the resulting MST as a circular-layout graph with red edges marking the spanning tree.",
+  "description": "The programming-project assignment for CSE 102 (Algorithm Analysis & Design): given a weighted undirected graph, compute its minimum weight spanning tree. The C++ implementation (Prim's algorithm with priority-queue) from the original 2021 submission runs unchanged via Emscripten. A Go implementation of the SAME problem using a DIFFERENT algorithm (Kruskal's with union-find) is also preserved in `kruskal-go/`, and its core has been ported into the wasm shim so the live demo lets you flip between Prim's and Kruskal's and confirm they produce the same total MST weight on connected graphs. Includes Fall 2020 + Fall 2021 LaTeX writeups for the HW + Lab problems as documentation (not deployable demos).",
   "tags": [
     "algorithms",
+    "cpp",
+    "go",
     "graphs",
+    "kruskal",
     "minimum-spanning-tree",
     "prims",
     "priority-queue",
-    "cpp",
+    "union-find",
     "webassembly"
   ],
   "completionLevel": "ships",
@@ -24,9 +27,9 @@
   "assets": [
     {
       "id": "mwst",
-      "title": "MWST — Prim's Algorithm",
+      "title": "MWST — Prim's + Kruskal's (real C++ + Go → WASM)",
       "group": "Demos",
-      "description": "Paste a weighted undirected graph (line format: vertex count, edge count, then one edge per line as 'a b weight') or pick a preset; the demo computes the MST and visualizes it. The C++ Prim's implementation is the original course submission, unmodified. Total weight matches the exact output the CLI produces — verified byte-for-byte against test/in{1,2,3} fixtures.",
+      "description": "Paste a weighted undirected graph (line format: vertex count, edge count, then one edge per line as 'a b weight') or pick a preset; pick Prim's or Kruskal's in the algorithm dropdown. Both produce the same MST total weight on connected graphs (different algorithms, same theoretical result). Verified byte-for-byte against test/in{1,2,3} fixtures for Prim's; Kruskal's independently confirmed via the original Go code (kruskal-go/) running on the same fixtures.",
       "embed": {
         "kind": "static-html",
         "entry": "mwst.html"

@@ -119,6 +119,13 @@
         <button id="solve" class="primary">Solve</button>
         <button id="clear">Clear</button>
       </div>
+      <div class="row">
+        <label style="min-width: 50px;">Algorithm</label>
+        <select id="algo" style="flex: 1; padding: .25rem; font: inherit; border: 1px solid #aaa; border-radius: 4px;">
+          <option value="0">Prim's (course C++)</option>
+          <option value="1">Kruskal's (union-find)</option>
+        </select>
+      </div>
       <div class="row" style="margin-top: .25rem; gap: .25rem; flex-wrap: wrap;">
         <span style="font-size: .7rem; color: #555;">Presets:</span>
         <button class="preset" data-preset="in1">7-node</button>
@@ -285,7 +292,8 @@
       function solve() {
         if (!mod) return;
         const text = $('input').value;
-        const ok = compute(text);
+        const algo = parseInt($('algo').value, 10);
+        const ok = compute(text, algo);
         if (!ok) {
           out.textContent = 'Error: ' + lasterr();
           out.classList.add('err');
@@ -296,8 +304,9 @@
           draw();
           return;
         }
+        const algoName = mod.UTF8ToString(mod._mwst_algo_name());
         const result = mod.UTF8ToString(mod._mwst_compute_text());
-        out.textContent = result;
+        out.textContent = `[algorithm: ${algoName}]\n` + result;
         out.classList.remove('err');
         $('stat-nodes').textContent = mod._mwst_node_count();
         $('stat-edges').textContent = mod._mwst_edge_count();
@@ -306,8 +315,9 @@
         draw();
       }
 
-      // --- bind UI ---------------------------------------------------
+      // Bind UI
       $('solve').addEventListener('click', solve);
+      $('algo').addEventListener('change', solve);
       $('clear').addEventListener('click', () => {
         $('input').value = '';
         out.textContent = '';

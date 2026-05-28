@@ -32,6 +32,7 @@ emcc \
   -s EXPORTED_FUNCTIONS='[
     "_mwst_compute",
     "_mwst_compute_text",
+    "_mwst_algo_name",
     "_mwst_node_count",
     "_mwst_edge_count",
     "_mwst_get_edge_a",

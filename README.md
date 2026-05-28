@@ -1,76 +1,95 @@
-# UCSC CSE 102 — Algorithm Analysis & Design (Fall 2021)
+# UCSC CSE 102 — Algorithm Analysis & Design (Fall 2020 + Fall 2021)
 
-Programming-project assignment for CSE 102 at UC Santa Cruz: compute the **Minimum Weight Spanning Tree** (MWST) of a weighted undirected graph using Prim's algorithm with a priority-queue.
+UC Santa Cruz CSE 102 (Algorithm Analysis & Design) coursework. The headline artifact is the **programming project** — Minimum Weight Spanning Tree (MWST) over a weighted undirected graph — implemented **twice**:
+
+- **C++ + Prim's algorithm** (`src/`) — the Fall 2021 submission
+- **Go + Kruskal's algorithm with union-find** (`kruskal-go/`) — also from Fall 2021, written for the same project but using a different language and a different MWST algorithm
+
+The interactive demo on codeseys.io runs both. You can flip between Prim's and Kruskal's in the algorithm selector and confirm they always produce the same total MST weight (modulo edge-tie-breaking) on connected graphs.
 
 ## Live demo
 
 [https://codeseys.io/projects/cse-102-mwst](https://codeseys.io/projects/cse-102-mwst)
 
-The C++ implementation from the original assignment runs unchanged — `src/graph.cpp` + `src/graph.h` (~250 LOC) — compiled to WebAssembly via Emscripten. The JavaScript layer just renders the resulting MST.
+The C++ Prim's runs as WebAssembly via Emscripten. The Kruskal's algorithm is implemented in the same wasm shim as a sibling, since `graph.h` is unmodified — the shim builds union-find on top of the public `edges` vector. This means **the same wasm bundle exposes both algorithms**.
 
 ## Layout
 
 ```
-src/                     — original assignment sources, unmodified
-  graph.{cpp,h}          — Graph class with insert() and prims()
-  main.cpp               — original CLI driver (kept as documentation)
-embeds-wasm/mwst/        — Emscripten shim layer + HTML harness
-test/                    — original test fixtures (in1/out1, in2/out2, in3/out3)
-scripts/build-embeds.sh  — CI build script
-web.codeseys.json        — Manifest for codeseys.io
-.github/workflows/       — Calls baladithyab/web-embed-workflows@main
+src/                        — Fall 2021 programming project (C++)
+  graph.{cpp,h}             — Graph class with insert() and prims()
+  main.cpp                  — original CLI driver, kept as documentation
+
+kruskal-go/                 — Fall 2021 programming project (Go), Kruskal's
+  go.mod                    — Go 1.21 module
+  main.go                   — CLI: go run . -f input.txt
+  graph/                    — generic graph types (edge list, adjacency map)
+  graph/mwst/kruskal.go     — Kruskal's algorithm with union-find
+  utils/set.go              — set helper
+  README.md                 — original README
+
+embeds-wasm/mwst/           — Emscripten shim layer + HTML harness
+  mwst-wasm.cpp             — exposes BOTH algorithms via mwst_compute(input, algo)
+  mwst.html                 — algorithm selector + circular-layout viz
+
+test/                       — original test fixtures (in1/out1, in2/out2, in3/out3)
+writeups/                   — LaTeX writeups for HW1-4 (Fall 2020) + HW1-2 (Fall 2021)
+                              + Lab 1-3 (Fall 2020). Documents only — not deployable
+                              demos. Not exposed as project tabs on codeseys.io.
+
+scripts/build-embeds.sh     — CI build script (Emscripten compile + asset prep)
+web.codeseys.json           — Manifest for codeseys.io
+.github/workflows/          — Calls baladithyab/web-embed-workflows@main
 ```
 
-## Original CLI
+## Quick verify (CLI, both implementations)
 
+### C++ Prim's
 ```bash
 g++ -std=gnu++2a -O2 -o ydc src/graph.cpp src/main.cpp
 ./ydc test/in1 /tmp/out1
 diff /tmp/out1 test/out1   # → no diff, byte-for-byte match
 ```
 
-The CLI takes 2 args (`input.txt output.txt`) and reads a graph in the line-format:
-
-```
-<numVerts>
-<numEdges>
-<u> <v> <w>
-... <numEdges> lines ...
-```
-
-It writes the MST in ascending weight order plus the total weight, e.g. for `test/in1`:
-
-```
-   5: (3, 5) 1.0
-  11: (6, 7) 2.0
-   2: (1, 4) 3.0
-   6: (3, 7) 4.0
-   3: (2, 3) 5.0
-   1: (1, 2) 6.0
-Total Weight = 21.00
+### Go Kruskal's
+```bash
+cd kruskal-go
+go run . -f ../test/in1
+# Edges in MST: (3,5,1) (6,7,2) (1,4,3) (3,7,4) (2,3,5) (1,2,6)
+# Total weight: 1+2+3+4+5+6 = 21 (matches Prim's output)
 ```
 
 ## Build pipeline
 
 1. Push to `master` triggers `.github/workflows/build-web-asset.yml`, which calls the reusable workflow at [`baladithyab/web-embed-workflows@main`](https://github.com/baladithyab/web-embed-workflows).
-2. Manifest declares `build.tools: ["emsdk"]` so the workflow installs Emscripten (cached).
-3. `scripts/build-embeds.sh` runs `emcc` over `src/graph.cpp` + the wasm shim, producing `embeds/mwst.{js,wasm,html}`.
-4. The workflow uploads everything in `embeds/` to Cloudflare R2 at `cse-102-mwst/<git-sha>/`, authenticated via OIDC.
+2. Manifest declares `build.tools: ["emsdk"]` so the workflow installs Emscripten (cached after first run).
+3. `scripts/build-embeds.sh` runs `emcc` over `src/graph.cpp` + the wasm shim — the Go code is preserved as readable source but does not compile in CI (it would need TinyGo and a separate output bundle; not worth the complexity).
+4. The workflow uploads everything in `embeds/` to Cloudflare R2 at `cse-102-mwst/<git-sha>/`, authenticated via OIDC (no static API keys).
 
-## Algorithm
+## Algorithms
 
-`Graph::prims()` (`src/graph.cpp:121-176`):
+### Prim's (C++, `src/graph.cpp::prims()`)
 
 1. Initialize `key[v] = ∞` for all vertices, pick any start vertex with `key[start] = 0`.
-2. Maintain a min-heap of (vertex, weight) pairs ordered by weight.
-3. Pop the smallest; if not yet visited, visit it and add `weight` to `total_cost`.
+2. Min-heap of `(vertex, weight)` pairs ordered by weight.
+3. Pop smallest; if not yet visited, add `weight` to `total_cost`.
 4. For each unvisited neighbor `(u, weight)`, if `weight < key[u]`, update `key[u] = weight` and push `(u, weight)`.
-5. Repeat until the heap is empty.
-6. Return parent-edges as a flat `[parent, child, parent, child, ...]` vector.
+5. Repeat until heap is empty.
 
-The wasm shim (`embeds-wasm/mwst/mwst-wasm.cpp`) takes input text, runs Prim's via the original Graph class, walks the input edges to identify which ones are in the MST, sorts those by weight ascending, and exposes the result via `mwst_compute_text()` plus per-edge accessors.
+### Kruskal's (Go, ported into `embeds-wasm/mwst/mwst-wasm.cpp` for the demo)
 
-## Running locally
+1. Sort all edges ascending by weight.
+2. Walk edges in order; for each, use union-find to check if it would form a cycle.
+3. If not, add it to the MST and union the two endpoints' components.
+4. Stop when the MST has `numNodes - 1` edges.
+
+The Go version uses path-compression in `find()` and union-by-rank in the disjoint-set; the C++ port mirrors both.
+
+## Writeups
+
+The `writeups/` directory contains LaTeX-rendered PDFs for HW1-4 (Fall 2020) and HW1-2 (Fall 2021), plus Lab 1-3 (Fall 2020). These are **course writeups**, not interactive demos — algorithm analysis problems, recurrence solutions, induction proofs. They're preserved for documentation but **deliberately not exposed as project tabs on the live site** (they "lead to nothing" interactive).
+
+## Running the WASM build locally
 
 ```bash
 # Install emsdk (one-time)
