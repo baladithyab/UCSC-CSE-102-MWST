@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "slug": "cse-102-mwst",
+  "category": {
+    "kind": "college",
+    "school": "UCSC",
+    "code": "CSE 102",
+    "title": "Algorithm Analysis & Design",
+    "year": 2021
+  },
+  "title": "CSE 102 — Minimum Weight Spanning Tree (UCSC, Fall 2021)",
+  "description": "The programming-project assignment for CSE 102 (Algorithm Analysis & Design): given a weighted undirected graph, compute its minimum weight spanning tree using Prim's algorithm with a priority-queue. The C++ implementation from the original assignment runs unchanged — graph.cpp + graph.h, ~250 lines — compiled to WebAssembly via Emscripten. The JavaScript layer takes input in the same line-format the CLI used, calls into wasm, and renders the resulting MST as a circular-layout graph with red edges marking the spanning tree.",
+  "tags": [
+    "algorithms",
+    "graphs",
+    "minimum-spanning-tree",
+    "prims",
+    "priority-queue",
+    "cpp",
+    "webassembly"
+  ],
+  "completionLevel": "ships",
+  "defaultAssetId": "mwst",
+  "assets": [
+    {
+      "id": "mwst",
+      "title": "MWST — Prim's Algorithm",
+      "group": "Demos",
+      "description": "Paste a weighted undirected graph (line format: vertex count, edge count, then one edge per line as 'a b weight') or pick a preset; the demo computes the MST and visualizes it. The C++ Prim's implementation is the original course submission, unmodified. Total weight matches the exact output the CLI produces — verified byte-for-byte against test/in{1,2,3} fixtures.",
+      "embed": {
+        "kind": "static-html",
+        "entry": "mwst.html"
+      }
+    }
+  ],
+  "build": {
+    "ci": true,
+    "workflow": ".github/workflows/build-web-asset.yml",
+    "script": "scripts/build-embeds.sh",
+    "tools": ["emsdk"]
+  }
+}

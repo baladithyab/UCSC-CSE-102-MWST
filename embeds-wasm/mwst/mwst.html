@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light only" />
+  <title>MWST — Prim's Algorithm (WASM, real CSE 102 C++)</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #111;
+      background: #fafaf9;
+      padding: 1rem;
+    }
+    h1 { margin: 0 0 .25rem 0; font-size: 1.05rem; font-weight: 600; }
+    h1 small {
+      color: #555;
+      font-weight: 400;
+      font-size: .85em;
+      margin-left: .35em;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 1rem;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+    @media (max-width: 720px) {
+      .layout { grid-template-columns: 1fr; }
+      .panel { order: -1; }
+    }
+    .panel {
+      background: #fff;
+      border: 1px solid #d4d4d8;
+      border-radius: 8px;
+      padding: .75rem;
+    }
+    .row { display: flex; gap: .5rem; align-items: center; margin-bottom: .5rem; flex-wrap: wrap; }
+    label { font-size: .75rem; color: #555; }
+    button {
+      font: inherit;
+      padding: .35rem .7rem;
+      border: 1px solid #aaa;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: #f4f4f5; }
+    button.primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+    button.primary:hover { background: #1e3a8a; }
+    button.preset {
+      font-size: .7rem;
+      padding: .15rem .4rem;
+    }
+    textarea {
+      width: 100%;
+      min-height: 110px;
+      padding: .35rem .5rem;
+      border: 1px solid #aaa;
+      border-radius: 4px;
+      font: 11px/1.4 ui-monospace, monospace;
+    }
+    pre {
+      background: #18181b;
+      color: #d4d4d8;
+      border-radius: 4px;
+      padding: .5rem;
+      font: 11px/1.4 ui-monospace, monospace;
+      max-height: 180px;
+      overflow: auto;
+      margin: .5rem 0 0 0;
+      white-space: pre;
+    }
+    .err { color: #fca5a5; }
+    .stats {
+      font-size: .72rem;
+      color: #555;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.6;
+    }
+    .stats > div { display: block; }
+    .stats dt { display: inline; font-weight: 600; }
+    .stats dt::after { content: ":"; }
+    .stats dd { display: inline; margin: 0 .8em 0 .25em; }
+    #graph {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      min-height: 380px;
+      background: #fff;
+      border-radius: 4px;
+    }
+    .footer-note {
+      font-size: .7rem;
+      color: #71717a;
+      margin-top: .5rem;
+      line-height: 1.5;
+    }
+    .footer-note a { color: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div>
+      <h1>CSE 102 MWST <small>WebAssembly · real C++ Prim's</small></h1>
+      <canvas id="graph" aria-label="Graph and MST visualization"></canvas>
+      <pre id="output" aria-live="polite">(load WASM…)</pre>
+    </div>
+    <div class="panel">
+      <div class="row" style="display: block;">
+        <label for="input">Graph input (line-format)</label>
+        <textarea id="input" spellcheck="false"></textarea>
+      </div>
+      <div class="row" style="gap: .35rem;">
+        <button id="solve" class="primary">Solve</button>
+        <button id="clear">Clear</button>
+      </div>
+      <div class="row" style="margin-top: .25rem; gap: .25rem; flex-wrap: wrap;">
+        <span style="font-size: .7rem; color: #555;">Presets:</span>
+        <button class="preset" data-preset="in1">7-node</button>
+        <button class="preset" data-preset="in2">16-node</button>
+        <button class="preset" data-preset="in3">4-node</button>
+      </div>
+      <hr style="border: 0; border-top: 1px solid #e4e4e7; margin: .5rem 0;" />
+      <dl class="stats">
+        <div><dt>Nodes</dt><dd id="stat-nodes">0</dd></div>
+        <div><dt>Edges</dt><dd id="stat-edges">0</dd></div>
+        <div><dt>MST edges</dt><dd id="stat-mst">0</dd></div>
+        <div><dt>Total weight</dt><dd id="stat-weight">—</dd></div>
+      </dl>
+      <p class="footer-note">
+        Algorithm: Prim's MST with priority-queue, exactly the C++ in
+        <a href="https://github.com/baladithyab/UCSC-CSE-102-MWST/blob/master/src/graph.cpp"
+           target="_blank" rel="noopener">src/graph.cpp::prims()</a>,
+        compiled with Emscripten. Input format:
+        first line is vertex count; second line is edge count; then one
+        edge per line as <code>a b weight</code>.
+      </p>
+    </div>
+  </div>
+
+  <script src="./mwst.js"></script>
+  <script>
+    (() => {
+      'use strict';
+      const $ = (id) => document.getElementById(id);
+      const canvas = $('graph');
+      const ctx = canvas.getContext('2d');
+      const out = $('output');
+      let mod = null;
+      let compute, lasterr;
+
+      // --- preset graphs (in1, in2, in3 from the test/ directory) ---
+      const presets = {
+        in1: '7\n11\n1 2 6\n1 4 3\n2 3 5\n2 5 8\n3 5 1\n3 7 4\n4 5 7\n4 6 9\n5 7 11\n6 7 2\n5 6 12\n',
+        in2: '16\n26\n1 2 5\n1 3 7\n1 4 12\n2 3 9\n2 5 7\n3 5 4\n3 6 4\n3 7 3\n4 7 7\n5 8 5\n5 9 4\n6 7 2\n6 9 6\n7 9 5\n7 10 9\n8 11 6\n9 11 7\n9 12 11\n10 12 8\n10 13 6\n11 14 8\n12 13 5\n12 15 6\n13 16 9\n14 15 7\n15 16 4\n',
+        in3: '4\n5\n1 2 1\n1 3 4\n2 3 2\n2 4 5\n3 4 2\n',
+      };
+
+      // --- canvas resize ---------------------------------------------
+      function resize(width, height) {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      // --- read graph + MST out of wasm ------------------------------
+      function readGraph() {
+        if (!mod) return null;
+        const nodeCount = mod._mwst_node_count();
+        const edgeCount = mod._mwst_edge_count();
+        const mstCount = mod._mwst_mst_count();
+        if (edgeCount === 0) return null;
+
+        const edges = [];
+        const nodeSet = new Set();
+        for (let i = 0; i < edgeCount; i++) {
+          const a = mod.UTF8ToString(mod._mwst_get_edge_a(i));
+          const b = mod.UTF8ToString(mod._mwst_get_edge_b(i));
+          const w = mod.UTF8ToString(mod._mwst_get_edge_weight(i));
+          edges.push({ a, b, w: parseFloat(w) });
+          nodeSet.add(a); nodeSet.add(b);
+        }
+        const nodes = Array.from(nodeSet).sort((x, y) => {
+          // Sort numerically when possible, lexicographically otherwise
+          const nx = Number(x), ny = Number(y);
+          if (Number.isFinite(nx) && Number.isFinite(ny)) return nx - ny;
+          return x.localeCompare(y);
+        });
+
+        const mstSet = new Set();  // "a|b" canonical
+        for (let i = 0; i < mstCount; i++) {
+          const a = mod.UTF8ToString(mod._mwst_mst_get_a(i));
+          const b = mod.UTF8ToString(mod._mwst_mst_get_b(i));
+          const key1 = `${a}|${b}`, key2 = `${b}|${a}`;
+          mstSet.add(key1); mstSet.add(key2);
+        }
+
+        return { nodes, edges, mstSet };
+      }
+
+      // --- circular layout -------------------------------------------
+      function draw() {
+        const data = readGraph();
+        const W = canvas.parentElement.clientWidth;
+        const H = Math.max(380, Math.min(560, W * 0.9));
+        resize(W, H);
+        ctx.clearRect(0, 0, W, H);
+
+        if (!data) {
+          ctx.fillStyle = '#a1a1aa';
+          ctx.font = '14px system-ui';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('No graph yet — paste edges or pick a preset →', W / 2, H / 2);
+          return;
+        }
+
+        const { nodes, edges, mstSet } = data;
+        const cx = W / 2, cy = H / 2;
+        const r = Math.min(W, H) * 0.38;
+        const pos = {};
+        nodes.forEach((n, i) => {
+          const theta = (i / nodes.length) * 2 * Math.PI - Math.PI / 2;
+          pos[n] = { x: cx + r * Math.cos(theta), y: cy + r * Math.sin(theta) };
+        });
+
+        // 1. Edges (non-MST first, then MST so MST sits on top)
+        ctx.lineWidth = 1;
+        ctx.font = '11px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (let phase = 0; phase < 2; phase++) {
+          const drawMst = phase === 1;
+          for (const e of edges) {
+            const inMst = mstSet.has(`${e.a}|${e.b}`);
+            if (inMst !== drawMst) continue;
+            const A = pos[e.a], B = pos[e.b];
+            ctx.strokeStyle = inMst ? '#dc2626' : '#d4d4d8';
+            ctx.lineWidth = inMst ? 2.5 : 1;
+            ctx.beginPath();
+            ctx.moveTo(A.x, A.y);
+            ctx.lineTo(B.x, B.y);
+            ctx.stroke();
+
+            // Edge weight label, midpoint
+            const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
+            ctx.fillStyle = inMst ? '#dc2626' : '#71717a';
+            // Background pill so labels are readable over crossings
+            const txt = String(e.w);
+            const m = ctx.measureText(txt);
+            ctx.fillStyle = '#fafaf9';
+            ctx.fillRect(mx - m.width / 2 - 3, my - 7, m.width + 6, 14);
+            ctx.fillStyle = inMst ? '#dc2626' : '#71717a';
+            ctx.fillText(txt, mx, my);
+          }
+        }
+
+        // 2. Nodes
+        const nodeR = 16;
+        for (const n of nodes) {
+          const p = pos[n];
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, nodeR, 0, Math.PI * 2);
+          ctx.fillStyle = '#1d4ed8';
+          ctx.fill();
+          ctx.strokeStyle = '#1e3a8a';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px system-ui';
+          const display = n.length > 4 ? n.slice(0, 3) + '…' : n;
+          ctx.fillText(display, p.x, p.y);
+          ctx.font = '11px system-ui';
+        }
+      }
+
+      function solve() {
+        if (!mod) return;
+        const text = $('input').value;
+        const ok = compute(text);
+        if (!ok) {
+          out.textContent = 'Error: ' + lasterr();
+          out.classList.add('err');
+          $('stat-nodes').textContent = '0';
+          $('stat-edges').textContent = '0';
+          $('stat-mst').textContent = '0';
+          $('stat-weight').textContent = '—';
+          draw();
+          return;
+        }
+        const result = mod.UTF8ToString(mod._mwst_compute_text());
+        out.textContent = result;
+        out.classList.remove('err');
+        $('stat-nodes').textContent = mod._mwst_node_count();
+        $('stat-edges').textContent = mod._mwst_edge_count();
+        $('stat-mst').textContent = mod._mwst_mst_count();
+        $('stat-weight').textContent = mod._mwst_total_weight();
+        draw();
+      }
+
+      // --- bind UI ---------------------------------------------------
+      $('solve').addEventListener('click', solve);
+      $('clear').addEventListener('click', () => {
+        $('input').value = '';
+        out.textContent = '';
+        $('stat-nodes').textContent = '0';
+        $('stat-edges').textContent = '0';
+        $('stat-mst').textContent = '0';
+        $('stat-weight').textContent = '—';
+        if (mod) { mod._mwst_compute(''); draw(); }
+      });
+      document.querySelectorAll('.preset').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          $('input').value = presets[btn.dataset.preset];
+          solve();
+        });
+      });
+      window.addEventListener('resize', () => { if (mod) draw(); });
+
+      // --- bootstrap -------------------------------------------------
+      if (typeof createMwstModule !== 'function') {
+        out.textContent = 'FATAL: mwst.js failed to load';
+        out.classList.add('err');
+        return;
+      }
+      createMwstModule().then((m) => {
+        mod = m;
+        compute = m.cwrap('mwst_compute', 'number', ['string']);
+        lasterr = () => m.UTF8ToString(m._mwst_last_error());
+        // Default preset
+        $('input').value = presets.in1;
+        solve();
+      }).catch((err) => {
+        out.textContent = `WASM load failed: ${err && err.message ? err.message : String(err)}`;
+        out.classList.add('err');
+      });
+    })();
+  </script>
+</body>
+</html>
