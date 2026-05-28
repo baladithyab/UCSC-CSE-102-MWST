@@ -42,6 +42,7 @@
     ]
   },
   "delivery": {
+    "mode": "runtime-r2",
     "url": "https://assets-r2.codeseys.io/cse-102-mwst/4c6477b/",
     "version": "4c6477b",
     "sizeBytes": 214372
